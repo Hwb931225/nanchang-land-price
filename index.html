@@ -2,9 +2,8 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <!-- 保持 viewport 设置，但不再强制隐藏侧边栏，让用户看到完整双栏布局，必要时可横向滑动 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes, viewport-fit=cover">
-    <title>南昌市基准地价查询系统 | 双栏完整视图</title>
+    <title>南昌市基准地价查询系统 | 双栏完整视图 · 可折叠侧边栏</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
@@ -16,19 +15,19 @@
             overflow: hidden; 
             background-color: #f0f2f5;
         }
-        /* 主容器：始终使用 flex 横向布局，确保侧边栏始终可见（电脑+手机一致） */
+        /* 主容器：flex横向布局，电脑端/手机端均可见侧边栏（手机端默认可见） */
         .app-container { 
             display: flex; 
             height: 100%; 
             width: 100%; 
             flex-direction: row;
-            overflow-x: auto;   /* 若手机屏幕过窄，允许横向滚动，保证侧边栏和地图都能完整访问 */
+            overflow-x: auto;
             overflow-y: hidden;
         }
-        /* 侧边栏样式：电脑端固定宽，手机端保持可见、略压缩宽度但绝不被隐藏 */
+        /* 侧边栏基础样式：始终参与flex布局，不隐藏（手机端默认可见） */
         .sidebar { 
             width: 320px; 
-            flex-shrink: 0;     /* 不被压缩，确保目录始终显示 */
+            flex-shrink: 0;
             background: rgba(255, 255, 255, 0.96); 
             box-shadow: 2px 0 12px rgba(0,0,0,0.1); 
             display: flex; 
@@ -36,39 +35,70 @@
             z-index: 10; 
             border-right: 1px solid #ddd; 
             overflow-y: auto; 
-            transition: none;    /* 去除移动端隐藏动画，始终保持可见 */
+            transition: width 0.2s ease, padding 0.1s ease;
         }
-        
-        /* 针对手机屏幕优化：侧边栏宽度调整为 280px，但仍然强制可见；不添加任何 transform/absolute 隐藏行为 */
+        /* 侧边栏折叠状态（仅移动端通过按钮触发） */
+        .sidebar.collapsed {
+            width: 0 !important;
+            min-width: 0 !important;
+            padding: 0 !important;
+            overflow: hidden;
+            border-right: none;
+            box-shadow: none;
+        }
+        /* 移动端适配：侧边栏宽度略微缩小以保证地图区域可操作，但依然可见目录 */
         @media (max-width: 768px) {
             .sidebar { 
-                width: 280px;     /* 稍微缩小以保证地图可见区域不至于过小，但依然完整呈现目录结构 */
-                position: relative;  /* 恢复为标准文档流，不漂浮 */
+                width: 270px;      /* 手机端宽度合适，目录清晰 */
+                position: relative;
                 left: auto;
                 top: auto;
-                bottom: auto;
-                transform: none !important;  /* 彻底禁用隐藏平移 */
-                box-shadow: 2px 0 8px rgba(0,0,0,0.1);
+                transform: none;
             }
-            /* 菜单按钮完全隐藏: 因为不再需要折叠侧边栏，直接显示目录 */
-            .menu-toggle { 
-                display: none !important; 
+            /* 菜单折叠按钮始终显示在右上角或左下角，增强移动体验 */
+            .menu-toggle {
+                display: flex;
+                position: fixed;
+                bottom: 16px;
+                left: 16px;
+                z-index: 40;
+                background: #1e4a6e;
+                color: white;
+                border: none;
+                border-radius: 40px;
+                padding: 10px 16px;
+                font-size: 0.85rem;
+                font-weight: bold;
+                cursor: pointer;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+                align-items: center;
+                gap: 8px;
+                backdrop-filter: blur(4px);
+                background-color: #1e4a6ee6;
+                transition: all 0.2s;
             }
-            /* 地图容器自动占据剩余宽度，且保证最小可交互尺寸 */
-            .map-container { 
-                flex: 1; 
-                min-width: 280px; /* 确保地图至少有一定宽度，可正常触摸操作 */
+            .menu-toggle i {
+                font-size: 1rem;
             }
-            /* 侧边栏内部字体、间距略微微调，提升触感 */
+            .menu-toggle:hover {
+                background: #0f3550;
+            }
+            .map-container {
+                flex: 1;
+                min-width: 0;
+            }
+            /* 调整侧边栏内部字体让触屏更友好 */
             .sidebar-header h2 { font-size: 1rem; }
-            .global-actions .btn-sm { padding: 4px 8px; font-size: 0.65rem; }
+            .global-actions .btn-sm { padding: 5px 8px; font-size: 0.65rem; }
             .node-label { font-size: 0.8rem; }
-            .leaf-layer-controls { padding: 6px 8px; margin-left: 20px; }
-            .style-item label { font-size: 0.6rem; }
+            .leaf-layer-controls { padding: 6px 8px; margin-left: 16px; }
         }
-        
-        /* 对于更大屏幕或者电脑，保持原有体验 */
-        .menu-toggle { display: none; } /* 全局隐藏菜单按钮，因为一直显示侧边栏 */
+        /* 电脑端不显示折叠按钮（因为目录常驻更符合大屏体验） */
+        @media (min-width: 769px) {
+            .menu-toggle {
+                display: none;
+            }
+        }
         .sidebar-header { padding: 16px; background: linear-gradient(135deg, #1e4a6e, #0f2c3f); color: white; position: sticky; top: 0; z-index: 20; }
         .sidebar-header h2 { font-size: 1.2rem; display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
         .global-actions { padding: 12px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; display: flex; gap: 8px; flex-wrap: wrap; }
@@ -101,7 +131,7 @@
         .visibility-icon.hidden { color: #adb5bd; }
         .children-wrapper { margin-left: 24px; display: none; }
         .children-wrapper.expanded { display: block; }
-        .map-container { flex: 1; position: relative; background: #f8f9fa; min-width: 0; /* 防止flex溢出 */ }
+        .map-container { flex: 1; position: relative; background: #f8f9fa; min-width: 0; }
         #map { height: 100%; width: 100%; background: #f8f9fa; }
         .info-tip { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 24px; font-size: 12px; z-index: 400; pointer-events: none; }
         .toast-message { position: fixed; bottom: 80px; right: 20px; background: #2c3e50; color: white; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 1000; max-width: 340px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); pointer-events: none; z-index: 2000; }
@@ -113,26 +143,12 @@
         .action-btn.del { color: #b91c1c; }
         .action-btn.add { color: #1e4a6e; }
         .action-btn:hover { background: rgba(0,0,0,0.05); }
-        
-        /* 确保移动端横向滑动时，地图容器的触摸行为依然流畅 */
-        @media (max-width: 768px) {
-            .app-container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            .sidebar, .map-container {
-                scroll-snap-align: start;
-            }
-            /* 优化按钮点击区域 */
-            .btn, .action-btn, .visibility-icon, .import-btn-sm {
-                touch-action: manipulation;
-            }
-        }
     </style>
 </head>
 <body>
 <div class="app-container">
-    <!-- 菜单按钮已完全隐藏，侧边栏始终可见 -->
+    <!-- 折叠按钮：移动端可见，用来手动隐藏/打开左侧目录 -->
+    <button class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i> <span id="toggleBtnText">隐藏目录</span></button>
     <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h2><i class="fas fa-chart-line"></i> 南昌市基准地价查询系统</h2>
@@ -155,7 +171,6 @@
 <script>
     // ==================== 地图初始化 ====================
     const map = L.map('map').setView([28.682, 115.858], 11);
-    // 使用 HTTPS 底图 (确保移动端安全)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CARTO',
         subdomains: 'abcd',
@@ -163,21 +178,62 @@
     }).addTo(map);
     L.control.scale({ metric: true, imperial: false }).addTo(map);
     
-    // 地图尺寸修正函数（确保容器变化后地图重新渲染）
+    // 地图尺寸修正函数
     function fixMapSize() {
         map.invalidateSize({ animate: false });
     }
     window.addEventListener('load', () => {
         fixMapSize();
-        // 确保侧边栏滚动时地图不会误触发隐藏操作（无隐藏逻辑）
     });
-    window.addEventListener('resize', fixMapSize);
+    window.addEventListener('resize', () => {
+        fixMapSize();
+    });
     setTimeout(fixMapSize, 200);
     setTimeout(fixMapSize, 600);
     
-    // 侧边栏不再有隐藏/显示功能，移除原菜单按钮交互，且点击地图不会关闭侧边栏（因没有隐藏需求）
-    // 原 menuToggle 按钮已隐藏，不再绑定事件；同时也不再有地图点击关闭侧边栏行为（提升体验）
-    // 但为了避免旧代码遗留监听，可以不做额外操作；地图点击关闭侧边栏原本绑定，但侧边栏始终存在，无副作用。
+    // ========== 侧边栏折叠/展开功能（移动端专用，电脑端无按钮但仍保留折叠类以防万一）==========
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebarEl = document.getElementById('sidebar');
+    const toggleBtnText = document.getElementById('toggleBtnText');
+    
+    // 初始化移动端侧边栏状态：默认可见（不折叠），且无 collapsed 类
+    function initSidebarState() {
+        if (sidebarEl) {
+            // 确保初始不折叠，目录可见
+            sidebarEl.classList.remove('collapsed');
+            if (toggleBtnText) toggleBtnText.innerText = '隐藏目录';
+        }
+        fixMapSize();
+    }
+    
+    // 切换侧边栏折叠/展开
+    function toggleSidebar() {
+        if (!sidebarEl) return;
+        const isCollapsed = sidebarEl.classList.contains('collapsed');
+        if (isCollapsed) {
+            sidebarEl.classList.remove('collapsed');
+            if (toggleBtnText) toggleBtnText.innerText = '隐藏目录';
+        } else {
+            sidebarEl.classList.add('collapsed');
+            if (toggleBtnText) toggleBtnText.innerText = '显示目录';
+        }
+        // 折叠/展开后强制刷新地图尺寸，避免地图容器错位
+        setTimeout(() => {
+            fixMapSize();
+            // 额外确保地图视图自适应（如有需要）
+            map.invalidateSize({ animate: false });
+        }, 50);
+    }
+    
+    if (menuToggle) {
+        menuToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleSidebar();
+        });
+    }
+    
+    // 确保在手机上初始目录可见且无折叠 (如果有意外残留样式)
+    initSidebarState();
     
     // 全局变量
     let treeData = [];
@@ -519,7 +575,6 @@
     async function autoImportFromRootDirectory() {
         if (!window.showDirectoryPicker) {
             showToast("当前浏览器不支持目录选择高级API", true);
-            fallbackLegacyImport();
             return;
         }
         try {
@@ -541,9 +596,6 @@
         } catch(err) {
             if(err.name !== 'AbortError') showToast("读取目录失败", true);
         }
-    }
-    function fallbackLegacyImport() {
-        showToast("请手动选择 GeoJSON 文件", true);
     }
     
     function renderTree(){
@@ -695,8 +747,8 @@
         document.getElementById('resetTreeBtn').onclick = () => { if(confirm('重置将清空所有矢量数据，恢复初始目录树，是否继续？')) resetTree(); };
         document.getElementById('githubImportBtn').onclick = () => importAllFromGitHub();
         document.getElementById('autoImportDirBtn').onclick = () => autoImportFromRootDirectory();
-        // 侧边栏始终可见，无需任何额外的移动端类操作，确保地图尺寸同步
-        fixMapSize();
+        // 确保所有初始化完成后再刷新地图尺寸
+        setTimeout(fixMapSize, 100);
     }
     init();
 </script>
