@@ -2,25 +2,33 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>南昌市基准地价查询系统 | GitHub 镜像加速导入</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>南昌市基准地价查询系统 | 移动适配版</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; height: 100vh; overflow: hidden; background-color: #f0f2f5; }
-        .app-container { display: flex; height: 100%; width: 100%; }
-        .sidebar { width: 460px; background: rgba(255, 255, 255, 0.96); box-shadow: 2px 0 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; z-index: 10; border-right: 1px solid #ddd; overflow-y: auto; }
+        .app-container { display: flex; height: 100%; width: 100%; flex-direction: row; }
+        /* 移动端侧边栏自适应宽度 */
+        .sidebar { width: 320px; background: rgba(255, 255, 255, 0.96); box-shadow: 2px 0 12px rgba(0,0,0,0.1); display: flex; flex-direction: column; z-index: 10; border-right: 1px solid #ddd; overflow-y: auto; transition: transform 0.2s; }
+        @media (max-width: 768px) {
+            .sidebar { width: 280px; position: absolute; left: 0; top: 0; bottom: 0; transform: translateX(-100%); z-index: 20; }
+            .sidebar.open { transform: translateX(0); }
+            .map-container { width: 100%; }
+            .menu-toggle { display: block; position: absolute; top: 12px; left: 12px; z-index: 30; background: #1e4a6e; color: white; border: none; border-radius: 8px; padding: 8px 12px; font-size: 1rem; cursor: pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        }
+        .menu-toggle { display: none; }
         .sidebar-header { padding: 16px; background: linear-gradient(135deg, #1e4a6e, #0f2c3f); color: white; position: sticky; top: 0; z-index: 20; }
-        .sidebar-header h2 { font-size: 1.3rem; display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
-        .global-actions { padding: 12px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; display: flex; gap: 10px; flex-wrap: wrap; }
-        .btn { border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.75rem; cursor: pointer; font-weight: 500; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
+        .sidebar-header h2 { font-size: 1.2rem; display: flex; align-items: center; gap: 8px; margin-bottom: 0; }
+        .global-actions { padding: 12px; background: #f8f9fa; border-bottom: 1px solid #e9ecef; display: flex; gap: 8px; flex-wrap: wrap; }
+        .btn { border: none; padding: 6px 12px; border-radius: 6px; font-size: 0.7rem; cursor: pointer; font-weight: 500; transition: 0.2s; display: inline-flex; align-items: center; gap: 6px; }
         .btn-primary { background: #1e4a6e; color: white; }
         .btn-primary:hover { background: #0f3550; }
         .btn-outline { background: white; border: 1px solid #1e4a6e; color: #1e4a6e; }
         .btn-outline:hover { background: #e9f0f5; }
-        .btn-sm { padding: 4px 10px; font-size: 0.75rem; }
+        .btn-sm { padding: 4px 10px; font-size: 0.7rem; }
         .btn-success { background: #2c7a4d; color: white; border: none; }
         .btn-success:hover { background: #1f5e3a; }
         .btn-info { background: #3b82f6; color: white; border: none; }
@@ -44,7 +52,7 @@
         .visibility-icon.hidden { color: #adb5bd; }
         .children-wrapper { margin-left: 24px; display: none; }
         .children-wrapper.expanded { display: block; }
-        .map-container { flex: 1; position: relative; }
+        .map-container { flex: 1; position: relative; background: #f8f9fa; }
         #map { height: 100%; width: 100%; background: #f8f9fa; }
         .info-tip { position: absolute; bottom: 20px; right: 20px; background: rgba(0,0,0,0.6); color: white; padding: 4px 12px; border-radius: 24px; font-size: 12px; z-index: 400; pointer-events: none; }
         .toast-message { position: fixed; bottom: 80px; right: 20px; background: #2c3e50; color: white; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 1000; max-width: 340px; box-shadow: 0 2px 10px rgba(0,0,0,0.2); pointer-events: none; z-index: 2000; }
@@ -60,10 +68,10 @@
 </head>
 <body>
 <div class="app-container">
-    <div class="sidebar">
+    <button class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i> 目录</button>
+    <div class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <h2><i class="fas fa-chart-line"></i> 南昌市基准地价查询系统</h2>
-            <!-- 已删除副标题小字 -->
         </div>
         <div class="global-actions">
             <button id="expandAllBtn" class="btn btn-outline btn-sm"><i class="fas fa-plus-square"></i> 全部展开</button>
@@ -83,12 +91,40 @@
 <script>
     // ==================== 地图初始化 ====================
     const map = L.map('map').setView([28.682, 115.858], 11);
+    // 使用 HTTPS 底图 (确保移动端安全)
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; CARTO',
         subdomains: 'abcd',
         maxZoom: 19
     }).addTo(map);
     L.control.scale({ metric: true, imperial: false }).addTo(map);
+    
+    // 移动端适配：强制地图容器尺寸正确
+    function fixMapSize() {
+        map.invalidateSize({ animate: false });
+    }
+    // 页面加载后、所有资源加载后、以及窗口大小变化时都修正
+    window.addEventListener('load', fixMapSize);
+    window.addEventListener('resize', fixMapSize);
+    // 尤其对于移动端软键盘弹出/收起等情况，延迟再修正一次
+    setTimeout(fixMapSize, 200);
+    setTimeout(fixMapSize, 600);
+    
+    // 可选：监听触摸开始，确保地图可拖动（Leaflet 本身支持）
+    // 移动端侧边栏开关
+    const menuToggle = document.getElementById('menuToggle');
+    const sidebar = document.getElementById('sidebar');
+    if (menuToggle) {
+        menuToggle.addEventListener('click', () => {
+            sidebar.classList.toggle('open');
+        });
+        // 点击地图区域关闭侧边栏（方便查看地图）
+        map.on('click', () => {
+            if (sidebar.classList.contains('open')) {
+                sidebar.classList.remove('open');
+            }
+        });
+    }
     
     // 全局变量
     let treeData = [];
@@ -161,7 +197,6 @@
         return 2;
     }
     
-    // 将级别索引转换为罗马数字显示
     function getLevelRoman(gradeIndex) {
         const romans = ['Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ'];
         return romans[Math.min(gradeIndex, 4)];
@@ -226,7 +261,6 @@
         }
     }
     
-    // 批量添加要素
     function batchAddFeaturesToLeaf(nodeId, geoJsonFeaturesArray, clearExisting = true) {
         let node = findNodeById(treeData, nodeId);
         if(!node || !node.isLeaf) return 0;
@@ -261,6 +295,13 @@
             addedCount++;
         }
         if(addedCount) renderTree();
+        // 添加新要素后，确保地图视图适应所有要素（可选）
+        if(addedCount > 0 && node.featureItems.length === addedCount && clearExisting) {
+            try {
+                const group = L.featureGroup(node.featureItems.map(f => f.layer));
+                map.fitBounds(group.getBounds().pad(0.1));
+            } catch(e) {}
+        }
         return addedCount;
     }
     
@@ -315,7 +356,6 @@
         return newNode;
     }
     
-    // 构建初始树
     function buildInitialTree(){
         let stateOwned = { id: nextNodeId++, name: "国有建设用地", isLeaf: false, expanded: true, children: [] };
         let year2020 = { id: nextNodeId++, name: "2020年基准地价", isLeaf: false, expanded: false, children: [] };
@@ -355,11 +395,8 @@
         setTimeout(()=>div.remove(), 4500);
     }
     
-    // ================== 核心：使用 jsDelivr 镜像导入 ==================
-    // 镜像地址（国内可访问）
     const GITHUB_RAW_BASE = "https://cdn.jsdelivr.net/gh/Hwb931225/nanchang-land-price@main/南昌市基准地价";
     
-    // 图层映射：相对路径 -> 树节点路径
     const layerMappings = [
         { filePath: "集体建设用地/市本级工业用地.geojson", targetPath: "集体建设用地/市本级工业用地" },
         { filePath: "集体建设用地/市本级商业用地.geojson", targetPath: "集体建设用地/市本级商业用地" },
@@ -424,9 +461,10 @@
         }
         showToast(`🎉 导入完成！成功 ${successCount}/${layerMappings.length} 个图层`);
         renderTree();
+        // 导入后再次修正地图尺寸
+        setTimeout(fixMapSize, 300);
     }
     
-    // ================== 保留本地目录导入作为备选（功能完整但可忽略） ==================
     async function autoImportFromRootDirectory() {
         if (!window.showDirectoryPicker) {
             showToast("当前浏览器不支持目录选择高级API", true);
@@ -457,7 +495,6 @@
         showToast("请手动选择 GeoJSON 文件", true);
     }
     
-    // ================== 渲染树界面 ==================
     function renderTree(){
         const container = document.getElementById('treeContainer');
         if(!container) return;
@@ -534,7 +571,7 @@
                 const importBtn = controlsDiv.querySelector('.import-btn-sm');
                 const fileInput = controlsDiv.querySelector('.leaf-import');
                 importBtn.onclick = () => fileInput.click();
-                fileInput.onchange = (e) => { if(e.target.files[0]) { const reader = new FileReader(); reader.onload = ev => { try{ let geojson=JSON.parse(ev.target.result); batchAddFeaturesToLeaf(node.id, (geojson.features||[geojson]), true); } catch(e){ alert("JSON解析失败"); } }; reader.readAsText(e.target.files[0]); } fileInput.value=''; };
+                fileInput.onchange = (e) => { if(e.target.files[0]) { const reader = new FileReader(); reader.onload = ev => { try{ let geojson=JSON.parse(ev.target.result); batchAddFeaturesToLeaf(node.id, (geojson.features||[geojson]), true); fixMapSize(); } catch(e){ alert("JSON解析失败"); } }; reader.readAsText(e.target.files[0]); } fileInput.value=''; };
                 const featureTitle = document.createElement('div');
                 featureTitle.style.fontSize='0.7rem'; featureTitle.style.fontWeight='bold'; featureTitle.style.marginTop='6px';
                 featureTitle.innerText = `要素 (${node.featureItems?.length||0})`;
@@ -544,13 +581,11 @@
                 if(!node.featureItems || node.featureItems.length===0){
                     listDiv.innerHTML = '<div class="empty-features">暂无要素，请点击“从 GitHub 仓库导入”</div>';
                 } else {
-                    // 对要素按级别升序排序（Ⅰ→Ⅴ）
                     const sortedFeatures = [...node.featureItems].sort((a,b) => {
                         const gradeA = getGradeIndex(a.properties?.TDJB || a.properties?.土地级 || 'Ⅲ');
                         const gradeB = getGradeIndex(b.properties?.TDJB || b.properties?.土地级 || 'Ⅲ');
                         return gradeA - gradeB;
                     });
-                    // 重新生成显示文本，地块序号从1开始递增
                     sortedFeatures.forEach((feat, idx) => {
                         const tdjbRaw = feat.properties?.TDJB || feat.properties?.土地级 || 'Ⅲ';
                         const gradeIndex = getGradeIndex(tdjbRaw);
@@ -592,6 +627,7 @@
         treeData = buildInitialTree();
         renderTree();
         showToast("树结构已重置，所有矢量数据已清空");
+        fixMapSize();
     }
     
     function setExpandAll(nodes, expand){
@@ -608,6 +644,10 @@
         document.getElementById('resetTreeBtn').onclick = () => { if(confirm('重置将清空所有矢量数据，恢复初始目录树，是否继续？')) resetTree(); };
         document.getElementById('githubImportBtn').onclick = () => importAllFromGitHub();
         document.getElementById('autoImportDirBtn').onclick = () => autoImportFromRootDirectory();
+        // 确保侧边栏在移动端初始隐藏（宽度 < 768px 时自动，加一个监听）
+        if (window.innerWidth <= 768) {
+            sidebar.classList.remove('open');
+        }
     }
     init();
 </script>
