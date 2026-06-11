@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>进贤县农用地定级专家打分</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
+            max-width: 600px;
+            margin: 20px auto;
+            padding: 16px;
+            background: #f5f7fa;
+        }
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h2 { margin-top: 0; color: #1e466e; }
+        .form-group { margin-bottom: 18px; }
+        label { font-weight: 600; display: block; margin-bottom: 6px; color: #2c3e50; }
+        input, select {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 12px;
+            background: white;
+        }
+        .subgroup {
+            margin-left: 16px;
+            padding-left: 16px;
+            border-left: 3px solid #a0c4e2;
+            margin-top: 12px;
+            margin-bottom: 12px;
+        }
+        .subsubgroup {
+            margin-left: 24px;
+            margin-top: 8px;
+            margin-bottom: 8px;
+        }
+        button {
+            background-color: #2c7da0;
+            color: white;
+            border: none;
+            padding: 14px;
+            font-size: 18px;
+            font-weight: bold;
+            border-radius: 40px;
+            width: 100%;
+            margin-top: 10px;
+            cursor: pointer;
+        }
+        .message {
+            margin-top: 16px;
+            padding: 12px;
+            border-radius: 12px;
+            display: none;
+            text-align: center;
+        }
+        .success { background: #d4edda; color: #155724; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb; }
+        .info-note {
+            background: #e9ecef;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 14px;
+            margin-bottom: 20px;
+            color: #495057;
+        }
+        hr { margin: 20px 0; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+<div class="card">
+    <h2>📋 进贤县农用地定级专家打分（第一轮）</h2>
+    <div class="info-note">
+        ⚠️ 请逐项填写权重。<br>
+        • 每个<strong>因素</strong>下的因子权重总和应为100<br>
+        • 每个<strong>因子</strong>下的子因子权重总和应为100
+    </div>
+
+    <form id="scoreForm">
+        <div class="form-group">
+            <label>👤 专家姓名</label>
+            <input type="text" id="expertName" placeholder="例如：陈文波" required>
+        </div>
+        <div class="form-group">
+            <label>🌾 地类</label>
+            <select id="landType" required>
+                <option value="耕地">耕地</option>
+                <option value="果园">果园</option>
+                <option value="茶园">茶园</option>
+                <option value="其他园地">其他园地</option>
+            </select>
+        </div>
+
+        <div id="scoringArea"></div>
+
+        <button type="submit">✅ 提交打分</button>
+    </form>
+    <div id="msg" class="message"></div>
+</div>
+
+<script>
+    // ========== 1. 配置 Supabase（已替换为用户提供的值）==========
+    const SUPABASE_URL = "https://swgyqzurpckhqaoqpfx.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_kI7R5k-8Y5N5-0gdbBaetA_lZyH62Hj";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // ========== 2. 定义所有地类的完整三级指标结构（根据用户Excel整理）==========
+    const schema = {
+        "耕地": {
+            factors: [
+                { name: "自然因素（A）", subFactors: [
+                    { name: "土壤条件（A1）", subSubFactors: ["土壤pH值（A11）","土壤质地（A12）","土壤有机质含量（A13）","有效土层厚度（A14）"] }
+                ]},
+                { name: "社会经济因素（B）", subFactors: [
+                    { name: "基础设施条件（B1）", subSubFactors: ["灌溉保证率(B11)","排水条件(B12)"] },
+                    { name: "耕作便利条件（B2）", subSubFactors: ["田块形状(B21)","田块平整度(B22)","耕作距离(B23)"] }
+                ]},
+                { name: "区位因素（C）", subFactors: [
+                    { name: "区位条件（C1）", subSubFactors: ["中心城市影响度(C11)","农贸市场影响度(C12)"] }
+                ]}
+            ]
+        },
+        "果园": {
+            factors: [
+                { name: "自然因素（A）", subFactors: [
+                    { name: "土壤因子（A1）", subSubFactors: ["有效土层厚度（A11）","土壤pH值（A12）","土壤有机质含量（A13）","土壤质地（A14）"] },
+                    { name: "地形因子（A2）", subSubFactors: ["坡度(A21)","坡向(A22)"] }
+                ]},
+                { name: "社会经济因素（B）", subFactors: [
+                    { name: "管理因子（B1）", subSubFactors: ["水源保证率(B11)","连片程度(B12)"] },
+                    { name: "劳作便利条件因子（B2）", subSubFactors: ["田间路网(B21)"] }
+                ]},
+                { name: "区位因子（C）", subFactors: [
+                    { name: "区位因子（C1）", subSubFactors: ["中心城市影响度(C11)","对外交通便利度(C12)","道路通达度（C13）","农贸市场影响度（C14）"] }
+                ]}
+            ]
+        },
+        "茶园": {
+            factors: [
+                { name: "自然因素（A）", subFactors: [
+                    { name: "土壤因子（A1）", subSubFactors: ["有效土层厚度（A11）","土壤pH值（A12）","土壤有机质含量（A13）","土壤质地（A14）"] },
+                    { name: "地形因子（A2）", subSubFactors: ["坡度(A21)","坡向(A22)","海拔(A23)"] }
+                ]},
+                { name: "社会经济因素（B）", subFactors: [
+                    { name: "管理因子（B1）", subSubFactors: ["水源保证率(B11)","连片程度(B12)"] },
+                    { name: "劳作便利条件因子（B2）", subSubFactors: ["田间路网(B21)"] }
+                ]},
+                { name: "区位因子（C）", subFactors: [
+                    { name: "区位因子（C1）", subSubFactors: ["中心城市影响度(C11)","对外交通便利度(C12)","道路通达度（C13）","农贸市场影响度（C14）"] }
+                ]}
+            ]
+        },
+        "其他园地": {
+            factors: [
+                { name: "自然因素（A）", subFactors: [
+                    { name: "土壤因子（A1）", subSubFactors: ["有效土层厚度（A11）","土壤pH值（A12）","土壤有机质含量（A13）","土壤质地（A14）"] },
+                    { name: "地形因子（A2）", subSubFactors: ["坡度(A21)","坡向(A22)"] }
+                ]},
+                { name: "社会经济因素（B）", subFactors: [
+                    { name: "管理因子（B1）", subSubFactors: ["水源保证率(B11)"] },
+                    { name: "劳作便利条件因子（B2）", subSubFactors: ["田间路网(B21)"] }
+                ]},
+                { name: "区位因子（C）", subFactors: [
+                    { name: "区位因子（C1）", subSubFactors: ["中心城市影响度(C11)","对外交通便利度(C12)","道路通达度（C13）","农贸市场影响度（C14）"] }
+                ]}
+            ]
+        }
+    };
+
+    // 动态生成表单
+    function renderScoringArea() {
+        const landType = document.getElementById('landType').value;
+        const area = document.getElementById('scoringArea');
+        area.innerHTML = '';
+        const current = schema[landType];
+        if (!current) {
+            area.innerHTML = '<p style="color:red;">地类指标缺失，请联系管理员。</p>';
+            return;
+        }
+
+        current.factors.forEach((factor, fIdx) => {
+            const factorDiv = document.createElement('div');
+            factorDiv.className = 'form-group';
+            factorDiv.innerHTML = `<label>📌 ${factor.name} 权重（0-100）</label><input type="number" id="factor_${fIdx}" min="0" max="100" step="1" required>`;
+            area.appendChild(factorDiv);
+
+            factor.subFactors.forEach((sub, sIdx) => {
+                const subDiv = document.createElement('div');
+                subDiv.className = 'subgroup';
+                subDiv.innerHTML = `<label>🔹 ${sub.name} 权重（0-100）</label><input type="number" id="sub_${fIdx}_${sIdx}" min="0" max="100" step="1" required>`;
+                area.appendChild(subDiv);
+
+                sub.subSubFactors.forEach((ssub, ssIdx) => {
+                    const ssubDiv = document.createElement('div');
+                    ssubDiv.className = 'subsubgroup';
+                    ssubDiv.innerHTML = `<label>▪️ ${ssub} 权重（0-100）</label><input type="number" id="ssub_${fIdx}_${sIdx}_${ssIdx}" min="0" max="100" step="1" required>`;
+                    area.appendChild(ssubDiv);
+                });
+            });
+            area.appendChild(document.createElement('hr'));
+        });
+    }
+
+    document.getElementById('landType').addEventListener('change', renderScoringArea);
+    window.addEventListener('load', renderScoringArea);
+
+    // 提交数据
+    document.getElementById('scoreForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const expertName = document.getElementById('expertName').value.trim();
+        const landType = document.getElementById('landType').value;
+        if (!expertName) {
+            alert('请填写专家姓名');
+            return;
+        }
+
+        const current = schema[landType];
+        if (!current) return alert('地类未配置');
+
+        const rows = [];
+        for (let fIdx = 0; fIdx < current.factors.length; fIdx++) {
+            const factor = current.factors[fIdx];
+            const factorWeight = parseInt(document.getElementById(`factor_${fIdx}`).value);
+            if (isNaN(factorWeight)) {
+                alert(`请填写 ${factor.name} 的权重`);
+                return;
+            }
+            for (let sIdx = 0; sIdx < factor.subFactors.length; sIdx++) {
+                const sub = factor.subFactors[sIdx];
+                const subWeight = parseInt(document.getElementById(`sub_${fIdx}_${sIdx}`).value);
+                if (isNaN(subWeight)) {
+                    alert(`请填写 ${sub.name} 的权重`);
+                    return;
+                }
+                for (let ssIdx = 0; ssIdx < sub.subSubFactors.length; ssIdx++) {
+                    const ssubName = sub.subSubFactors[ssIdx];
+                    const ssubWeight = parseInt(document.getElementById(`ssub_${fIdx}_${sIdx}_${ssIdx}`).value);
+                    if (isNaN(ssubWeight)) {
+                        alert(`请填写 ${ssubName} 的权重`);
+                        return;
+                    }
+                    rows.push({
+                        expert_name: expertName,
+                        land_type: landType,
+                        factor: factor.name,
+                        factor_weight: factorWeight,
+                        sub_factor: sub.name,
+                        sub_factor_weight: subWeight,
+                        sub_sub_factor: ssubName,
+                        sub_sub_factor_weight: ssubWeight
+                    });
+                }
+            }
+        }
+
+        const { error } = await supabase.from('scores').insert(rows);
+        if (error) {
+            console.error(error);
+            document.getElementById('msg').innerHTML = '提交失败，请稍后重试。';
+            document.getElementById('msg').className = 'message error';
+            document.getElementById('msg').style.display = 'block';
+        } else {
+            document.getElementById('msg').innerHTML = '✅ 提交成功！感谢您的参与。';
+            document.getElementById('msg').className = 'message success';
+            document.getElementById('msg').style.display = 'block';
+            setTimeout(() => {
+                document.getElementById('msg').style.display = 'none';
+            }, 4000);
+            // 不清空表单，允许专家继续提交（但通常每人一次）
+        }
+    });
+</script>
+</body>
+</html>

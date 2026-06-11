@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员统计 - 权重表</title>
+    <style>
+        body {
+            font-family: system-ui, 'Segoe UI', Roboto;
+            max-width: 1300px;
+            margin: 20px auto;
+            padding: 16px;
+            background: #f0f2f5;
+        }
+        .card {
+            background: white;
+            border-radius: 24px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        h2 { margin-top: 0; color: #1e466e; }
+        .toolbar {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        select, button {
+            padding: 10px 18px;
+            font-size: 16px;
+            border-radius: 40px;
+            border: 1px solid #ccc;
+            background: white;
+            cursor: pointer;
+        }
+        button.primary {
+            background: #2c7da0;
+            color: white;
+            border: none;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+            overflow-x: auto;
+            display: block;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px 8px;
+            text-align: center;
+            vertical-align: top;
+        }
+        th {
+            background-color: #e9ecef;
+            font-weight: 600;
+        }
+        .export-btn {
+            background: #28a745;
+            color: white;
+        }
+        .note {
+            background: #fff3cd;
+            padding: 12px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+</head>
+<body>
+<div class="card">
+    <h2>📊 专家打分实时统计表（最终权重）</h2>
+    <div class="note">
+        🔄 每刷新一次从数据库拉取最新数据。<br>
+        📌 最终权重 = 因素平均权重 × 因子平均权重 × 子因子平均权重 / 1000000<br>
+        📉 标准差为子因子权重的标准差。
+    </div>
+    <div class="toolbar">
+        <label>地类：</label>
+        <select id="landTypeSelect">
+            <option value="耕地">耕地</option>
+            <option value="果园">果园</option>
+            <option value="茶园">茶园</option>
+            <option value="其他园地">其他园地</option>
+        </select>
+        <button id="refreshBtn" class="primary">🔄 刷新统计</button>
+        <button id="exportBtn" class="export-btn">📎 导出 Excel</button>
+    </div>
+    <div id="statsResult">加载中...</div>
+</div>
+
+<script>
+    // Supabase 配置（与 index.html 相同）
+    const SUPABASE_URL = "https://swgyqzurpckhqaoqpfx.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_kI7R5k-8Y5N5-0gdbBaetA_lZyH62Hj";
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    let rawData = [];
+    let finalTable = [];
+
+    async function fetchScores(landType) {
+        const { data, error } = await supabase
+            .from('scores')
+            .select('*')
+            .eq('land_type', landType);
+        if (error) {
+            console.error(error);
+            return [];
+        }
+        return data;
+    }
+
+    // 聚合计算：因素平均权重（去重）、因子平均权重（去重）、子因子统计
+    function computeStats(rows) {
+        // 1) 因素平均权重：每个专家提交一次，我们需要按专家+因素去重后平均
+        const expertFactorMap = new Map(); // key: expert_name|factor, value: weight
+        for (const row of rows) {
+            const key = `${row.expert_name}|${row.factor}`;
+            if (!expertFactorMap.has(key)) {
+                expertFactorMap.set(key, row.factor_weight);
+            }
+        }
+        // 按因素聚合
+        const factorSumMap = new Map();
+        const factorCountMap = new Map();
+        for (let [key, weight] of expertFactorMap.entries()) {
+            const factor = key.split('|')[1];
+            factorSumMap.set(factor, (factorSumMap.get(factor) || 0) + weight);
+            factorCountMap.set(factor, (factorCountMap.get(factor) || 0) + 1);
+        }
+        const factorAvg = new Map();
+        for (let [factor, sum] of factorSumMap.entries()) {
+            factorAvg.set(factor, sum / factorCountMap.get(factor));
+        }
+
+        // 2) 因子平均权重：专家+因子去重
+        const expertSubFactorMap = new Map(); // key: expert_name|sub_factor, value: weight
+        for (const row of rows) {
+            const key = `${row.expert_name}|${row.sub_factor}`;
+            if (!expertSubFactorMap.has(key)) {
+                expertSubFactorMap.set(key, row.sub_factor_weight);
+            }
+        }
+        const subFactorSumMap = new Map();
+        const subFactorCountMap = new Map();
+        for (let [key, weight] of expertSubFactorMap.entries()) {
+            const subFactor = key.split('|')[1];
+            subFactorSumMap.set(subFactor, (subFactorSumMap.get(subFactor) || 0) + weight);
+            subFactorCountMap.set(subFactor, (subFactorCountMap.get(subFactor) || 0) + 1);
+        }
+        const subFactorAvg = new Map();
+        for (let [subFactor, sum] of subFactorSumMap.entries()) {
+            subFactorAvg.set(subFactor, sum / subFactorCountMap.get(subFactor));
+        }
+
+        // 3) 子因子统计（平均值、标准差）
+        const subSubMap = new Map(); // key: sub_sub_factor, value: { weights[], factor, subFactor }
+        for (const row of rows) {
+            const ssub = row.sub_sub_factor;
+            if (!subSubMap.has(ssub)) {
+                subSubMap.set(ssub, { weights: [], factor: row.factor, subFactor: row.sub_factor });
+            }
+            subSubMap.get(ssub).weights.push(row.sub_sub_factor_weight);
+        }
+        const subSubStats = [];
+        for (let [name, data] of subSubMap.entries()) {
+            const weights = data.weights;
+            const avg = weights.reduce((a,b)=>a+b,0) / weights.length;
+            const variance = weights.map(w => Math.pow(w-avg,2)).reduce((a,b)=>a+b,0) / weights.length;
+            const std = Math.sqrt(variance);
+            subSubStats.push({
+                sub_sub_factor: name,
+                factor: data.factor,
+                sub_factor: data.subFactor,
+                avg_weight: avg,
+                std_dev: std
+            });
+        }
+        return { factorAvg, subFactorAvg, subSubStats };
+    }
+
+    async function renderStats() {
+        const landType = document.getElementById('landTypeSelect').value;
+        const rows = await fetchScores(landType);
+        rawData = rows;
+        if (rows.length === 0) {
+            document.getElementById('statsResult').innerHTML = '<p>暂无打分数据，请等待专家提交。</p>';
+            finalTable = [];
+            return;
+        }
+
+        const { factorAvg, subFactorAvg, subSubStats } = computeStats(rows);
+        const tableRows = [];
+        for (const stat of subSubStats) {
+            const factorName = stat.factor;
+            const subFactorName = stat.sub_factor;
+            const factorMean = factorAvg.get(factorName) || 0;
+            const subMean = subFactorAvg.get(subFactorName) || 0;
+            const finalWeight = (factorMean * subMean * stat.avg_weight) / 1000000;
+            tableRows.push({
+                因素: factorName,
+                因子: subFactorName,
+                子因子: stat.sub_sub_factor,
+                因素平均权重: factorMean.toFixed(2),
+                因子平均权重: subMean.toFixed(2),
+                子因子平均权重: stat.avg_weight.toFixed(2),
+                标准差: stat.std_dev.toFixed(2),
+                最终权重: finalWeight.toFixed(6)
+            });
+        }
+        finalTable = tableRows;
+
+        let html = '<table><thead><tr>' +
+            '<th>因素</th><th>因子</th><th>子因子</th>' +
+            '<th>因素平均权重</th><th>因子平均权重</th>' +
+            '<th>子因子平均权重</th><th>标准差</th><th>最终权重</th>' +
+            '</tr></thead><tbody>';
+        for (const row of tableRows) {
+            html += `<tr>
+                        <td>${row.因素}</td>
+                        <td>${row.因子}</td>
+                        <td style="text-align:left">${row.子因子}</td>
+                        <td>${row.因素平均权重}</td>
+                        <td>${row.因子平均权重}</td>
+                        <td>${row.子因子平均权重}</td>
+                        <td>${row.标准差}</td>
+                        <td>${row.最终权重}</td>
+                     </tr>`;
+        }
+        html += '</tbody></table>';
+        document.getElementById('statsResult').innerHTML = html;
+    }
+
+    function exportExcel() {
+        if (finalTable.length === 0) {
+            alert('无数据可导出');
+            return;
+        }
+        const ws = XLSX.utils.json_to_sheet(finalTable);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, '权重表');
+        XLSX.writeFile(wb, `权重表_${document.getElementById('landTypeSelect').value}_${new Date().toISOString().slice(0,19)}.xlsx`);
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', renderStats);
+    document.getElementById('exportBtn').addEventListener('click', exportExcel);
+    window.addEventListener('load', renderStats);
+</script>
+</body>
+</html>
